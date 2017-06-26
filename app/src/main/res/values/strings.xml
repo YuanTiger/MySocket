@@ -1,0 +1,15 @@
+<resources>
+    <string name="app_name">Socket_Carson</string>
+    <string name="connect_success">conncetion success</string>
+    <string name="connect_failed">conncetion falied</string>
+    <string name="connect_disconnect">conncetion disconnect</string>
+    <string name="connect_timeout">conncetion timeout</string>
+
+    <string name="login_success">login success</string>
+    <string name="login_failed">login failde</string>
+    <string name="login_timeout">login timeout</string>
+
+    <string name="heart_success">heart success</string>
+    <string name="heart_failed">heart failde</string>
+    <string name="heart_timeout">heart timeout</string>
+</resources>
