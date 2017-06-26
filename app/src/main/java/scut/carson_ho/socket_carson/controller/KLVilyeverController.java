@@ -89,9 +89,13 @@ public class KLVilyeverController {
         //设置动态的心跳包内容
         setAutoHeartContent();
 
-        //设置读取模式：手动读取模式
-        setModelDefaultSend();
-        setModelDefaultReceive();
+
+        //在发送每个数据包时，发送每段数据的最长时间，超过后自动断开socket连接
+        localSocketClient.getSocketPacketHelper().setSendTimeout(SocketConfig.HEART_SEND_TIME);
+        // 设置允许使用发送超时时长，此值默认为false
+        localSocketClient.getSocketPacketHelper().setSendTimeoutEnabled(true);
+        localSocketClient.getSocketPacketHelper().setReadStrategy(SocketPacketHelper.ReadStrategy.Manually);
+
 
         //注册连接状态改变监听
         this.localSocketClient.registerSocketStateChangeCallback(new SocketStateChangeCallback() {
@@ -338,45 +342,5 @@ public class KLVilyeverController {
         localSocketClient.getHeartBeatHelper().setSendHeartBeatEnabled(false); // 设置允许自动发送心跳包，此值默认为false
     }
 
-
-    /**
-     * 设置发送为手动模式
-     */
-    private void setModelDefaultSend() {
-        /**
-         * 设置分段发送数据长度
-         * 即在发送指定长度后通过 {@link PackageSendCallback#onSendingPacketInProgress(SocketClient, SocketPacket, float, int)}回调当前发送进度
-         * 注意：回调过于频繁可能导致设置UI过于频繁从而导致主线程卡顿
-         *
-         * 若无需进度回调可删除此二行，删除后仍有【发送开始】【发送结束】的回调
-         */
-//        socketClient.getSocketPacketHelper().setSendSegmentLength(8); // 设置发送分段长度，单位byte
-//        socketClient.getSocketPacketHelper().setSendSegmentEnabled(true); // 设置允许使用分段发送，此值默认为false
-
-        /**
-         * 设置发送超时时长
-         * 在发送每个数据包时，发送每段数据的最长时间，超过后自动断开socket连接
-         * 通过设置分段发送{@link SocketPacketHelper#setSendSegmentEnabled(boolean)} 可避免发送大数据包时因超时断开，
-         *
-         * 若无需限制发送时长可删除此二行
-         */
-        localSocketClient.getSocketPacketHelper().setSendTimeout(SocketConfig.HEART_SEND_TIME); // 设置发送超时时长，单位毫秒
-        localSocketClient.getSocketPacketHelper().setSendTimeoutEnabled(true); // 设置允许使用发送超时时长，此值默认为false
-    }
-
-    /**
-     * 设置接收为手动模式
-     */
-    private void setModelDefaultReceive() {
-        /**
-         * 设置读取策略为手动读取
-         * 手动读取有两种方法
-         * 1. {@link SocketClient#readDataToData(byte[], boolean)} )} 读取到与指定字节相同的字节序列后回调数据包
-         * 2. {@link SocketClient#readDataToLength(int)} 读取指定长度的字节后回调数据包
-         *
-         * 此时SocketPacketHelper中其他读取相关设置将会无效化
-         */
-        localSocketClient.getSocketPacketHelper().setReadStrategy(SocketPacketHelper.ReadStrategy.Manually);
-    }
 
 }
