@@ -7,11 +7,10 @@ import android.os.Message;
 import android.support.annotation.CallSuper;
 import android.support.annotation.NonNull;
 
+import com.vilyever.socketclient.helper.PackageReciveCallback;
+import com.vilyever.socketclient.helper.PackageSendCallback;
 import com.vilyever.socketclient.helper.SocketClientAddress;
-import com.vilyever.socketclient.helper.SocketClientDelegate;
-import com.vilyever.socketclient.helper.SocketClientReceivingDelegate;
-import com.vilyever.socketclient.helper.SocketClientSendingDelegate;
-import com.vilyever.socketclient.helper.SocketConfigure;
+import com.vilyever.socketclient.helper.SocketStateChangeCallback;
 import com.vilyever.socketclient.helper.SocketHeartBeatHelper;
 import com.vilyever.socketclient.helper.SocketInputReader;
 import com.vilyever.socketclient.helper.SocketPacket;
@@ -21,14 +20,15 @@ import com.vilyever.socketclient.helper.SocketResponsePacket;
 import java.io.IOException;
 import java.lang.ref.WeakReference;
 import java.net.Socket;
-import java.util.ArrayList;
 import java.util.concurrent.LinkedBlockingQueue;
 
 /**
  * SocketClient
  * AndroidSocketClient <com.vilyever.socketclient>
+ * <p>
  * Created by vilyever on 2016/3/18.
- * Feature:
+ * <p>
+ * Update My:2017/06/20 针对口粮App需求，删除无用代码
  */
 public class SocketClient {
     final SocketClient self = this;
@@ -44,7 +44,11 @@ public class SocketClient {
         this.address = address;
     }
 
-    /* Public Methods */
+    /**
+     * 开始连接
+     * 连接前必须设置合理ip以及一系列参数
+     * 如果需要回调也需要在连接之前设置
+     */
     public void connect() {
         if (!isDisconnected()) {
             return;
@@ -53,11 +57,13 @@ public class SocketClient {
         if (getAddress() == null) {
             throw new IllegalArgumentException("we need a SocketClientAddress to connect");
         }
-
+        //检查地址是否合理，利用正则
         getAddress().checkValidation();
+        //检查包内容的合理性
         getSocketPacketHelper().checkValidation();
-
-        setState(State.Connecting);
+        //改变状态为：连接中
+        setState(ConnectState.Connecting);
+        //启动连接线程
         getConnectionThread().start();
     }
 
@@ -72,16 +78,16 @@ public class SocketClient {
     }
 
     public boolean isConnected() {
-        return getState() == State.Connected;
+        return getState() == ConnectState.Connected;
     }
 
 
     public boolean isDisconnected() {
-        return getState() == State.Disconnected;
+        return getState() == ConnectState.Disconnect;
     }
 
     public boolean isConnecting() {
-        return getState() == State.Connecting;
+        return getState() == ConnectState.Connecting;
     }
 
 
@@ -181,7 +187,6 @@ public class SocketClient {
                             self.getReceivingResponsePacket().buildStringWithCharsetName(getCharsetName());
                         }
                         self.__i__onReceivePacketEnd(self.getReceivingResponsePacket());
-                        self.__i__onReceiveResponse(self.getReceivingResponsePacket());
                     } catch (IOException e) {
                         e.printStackTrace();
 
@@ -235,7 +240,6 @@ public class SocketClient {
                         self.getReceivingResponsePacket().buildStringWithCharsetName(getCharsetName());
                     }
                     self.__i__onReceivePacketEnd(self.getReceivingResponsePacket());
-                    self.__i__onReceiveResponse(self.getReceivingResponsePacket());
                 } catch (IOException e) {
                     e.printStackTrace();
 
@@ -250,71 +254,38 @@ public class SocketClient {
         return getReceivingResponsePacket();
     }
 
-    /**
-     * 注册监听回调
-     *
-     * @param delegate 回调接收者
-     */
-    public SocketClient registerSocketClientDelegate(SocketClientDelegate delegate) {
-        if (!getSocketClientDelegates().contains(delegate)) {
-            getSocketClientDelegates().add(delegate);
+    //Socket状态监听
+    private SocketStateChangeCallback socketClientDelegate;
+
+    //注册Socket状态监听
+    public SocketClient registerSocketStateChangeCallback(SocketStateChangeCallback delegate) {
+        if (socketClientDelegate == null) {
+            socketClientDelegate = delegate;
         }
         return this;
     }
 
-    /**
-     * 取消注册监听回调
-     *
-     * @param delegate 回调接收者
-     */
-    public SocketClient removeSocketClientDelegate(SocketClientDelegate delegate) {
-        getSocketClientDelegates().remove(delegate);
-        return this;
-    }
+    //包的发送监听
+    private PackageSendCallback packageSendCallback;
 
-    /**
-     * 注册信息发送回调
-     *
-     * @param delegate 回调接收者
-     */
-    public SocketClient registerSocketClientSendingDelegate(SocketClientSendingDelegate delegate) {
-        if (!getSocketClientSendingDelegates().contains(delegate)) {
-            getSocketClientSendingDelegates().add(delegate);
+    //注册信息发送回调
+    public SocketClient registerPackageSendCallback(PackageSendCallback delegate) {
+        if (packageSendCallback == null) {
+            packageSendCallback = delegate;
         }
         return this;
     }
 
-    /**
-     * 取消注册信息发送回调
-     *
-     * @param delegate 回调接收者
-     */
-    public SocketClient removeSocketClientSendingDelegate(SocketClientSendingDelegate delegate) {
-        getSocketClientSendingDelegates().remove(delegate);
-        return this;
-    }
+    private PackageReciveCallback packageRecieveCallback;
 
-    /**
-     * 注册信息接收回调
-     *
-     * @param delegate 回调接收者
-     */
-    public SocketClient registerSocketClientReceiveDelegate(SocketClientReceivingDelegate delegate) {
-        if (!getSocketClientReceivingDelegates().contains(delegate)) {
-            getSocketClientReceivingDelegates().add(delegate);
+    //注册信息接收回调
+    public SocketClient registerPackageReceiveCallback(PackageReciveCallback delegate) {
+        if (packageRecieveCallback == null) {
+            packageRecieveCallback = delegate;
         }
         return this;
     }
 
-    /**
-     * 取消注册信息接收回调
-     *
-     * @param delegate 回调接收者
-     */
-    public SocketClient removeSocketClientReceiveDelegate(SocketClientReceivingDelegate delegate) {
-        getSocketClientReceivingDelegates().remove(delegate);
-        return this;
-    }
 
     /* Properties */
     private SocketClientAddress address;
@@ -412,25 +383,35 @@ public class SocketClient {
 
     /**
      * 当前连接状态
-     * 当设置状态为{@link State#Connected}, 收发线程等初始操作均未启动
+     * 当设置状态为{@link ConnectState#Connected}, 收发线程等初始操作均未启动
      * 此状态仅为一个标识
      */
-    private State state;
+    private ConnectState state;
 
-    protected SocketClient setState(State state) {
+    protected SocketClient setState(ConnectState state) {
         this.state = state;
         return this;
     }
 
-    public State getState() {
+    public ConnectState getState() {
         if (this.state == null) {
-            return State.Disconnected;
+            return ConnectState.Disconnect;
         }
         return this.state;
     }
 
-    public enum State {
-        Disconnected, Connecting, Connected
+    /**
+     * 连接状态
+     */
+    public enum ConnectState {
+        //断开
+        Disconnect,
+        //手动断开
+        Disconnected,
+        //连接中
+        Connecting,
+        //连接成功
+        Connected
     }
 
     private boolean disconnecting;
@@ -617,32 +598,6 @@ public class SocketClient {
         return this.receiveThread;
     }
 
-    private ArrayList<SocketClientDelegate> socketClientDelegates;
-
-    protected ArrayList<SocketClientDelegate> getSocketClientDelegates() {
-        if (this.socketClientDelegates == null) {
-            this.socketClientDelegates = new ArrayList<SocketClientDelegate>();
-        }
-        return this.socketClientDelegates;
-    }
-
-    private ArrayList<SocketClientSendingDelegate> socketClientSendingDelegates;
-
-    protected ArrayList<SocketClientSendingDelegate> getSocketClientSendingDelegates() {
-        if (this.socketClientSendingDelegates == null) {
-            this.socketClientSendingDelegates = new ArrayList<SocketClientSendingDelegate>();
-        }
-        return this.socketClientSendingDelegates;
-    }
-
-    private ArrayList<SocketClientReceivingDelegate> socketClientReceivingDelegates;
-
-    protected ArrayList<SocketClientReceivingDelegate> getSocketClientReceivingDelegates() {
-        if (this.socketClientReceivingDelegates == null) {
-            this.socketClientReceivingDelegates = new ArrayList<SocketClientReceivingDelegate>();
-        }
-        return this.socketClientReceivingDelegates;
-    }
 
     private UIHandler uiHandler;
 
@@ -677,7 +632,7 @@ public class SocketClient {
     /* Protected Methods */
     @CallSuper
     protected void internalOnConnected() {
-        setState(SocketClient.State.Connected);
+        setState(ConnectState.Connected);
 
         setLastSendHeartBeatMessageTime(System.currentTimeMillis());
         setLastReceiveMessageTime(System.currentTimeMillis());
@@ -709,7 +664,7 @@ public class SocketClient {
             return;
         }
 
-        if ( getHeartBeatHelper() == null
+        if (getHeartBeatHelper() == null
                 || !getHeartBeatHelper().isSendHeartBeatEnabled()) {
             return;
         }
@@ -723,8 +678,14 @@ public class SocketClient {
         }).start();
     }
 
+
+    /**
+     * 当Socket连接成功时自动调用此方法
+     */
     private void __i__onConnected() {
+        //如果该线程不是主线程
         if (Looper.myLooper() != Looper.getMainLooper()) {
+            //切换到主线程执行该方法
             getUiHandler().post(new Runnable() {
                 @Override
                 public void run() {
@@ -733,19 +694,22 @@ public class SocketClient {
             });
             return;
         }
-
-        ArrayList<SocketClientDelegate> delegatesCopy =
-                (ArrayList<SocketClientDelegate>) getSocketClientDelegates().clone();
-        int count = delegatesCopy.size();
-        for (int i = 0; i < count; ++i) {
-            delegatesCopy.get(i).onConnected(this);
+        //触发连接成功回调-这绝对是在主线程
+        if (socketClientDelegate != null) {
+            socketClientDelegate.onConnected(this);
         }
 
+        //启动发送线程
         getSendThread().start();
+        //启动接收线程
         getReceiveThread().start();
+        //启动心跳线程
         getHearBeatCountDownTimer().start();
     }
 
+    /**
+     * 当Socket断开时自动调用此方法
+     */
     private void __i__onDisconnected() {
         if (Looper.myLooper() != Looper.getMainLooper()) {
             getUiHandler().post(new Runnable() {
@@ -756,38 +720,17 @@ public class SocketClient {
             });
             return;
         }
-
-        ArrayList<SocketClientDelegate> delegatesCopy =
-                (ArrayList<SocketClientDelegate>) getSocketClientDelegates().clone();
-        int count = delegatesCopy.size();
-        for (int i = 0; i < count; ++i) {
-            delegatesCopy.get(i).onDisconnected(this);
+        //触发断开连接的回调-这绝对是在主线程
+        if (socketClientDelegate != null) {
+            socketClientDelegate.onDisconnected(this);
         }
     }
 
-    private void __i__onReceiveResponse(@NonNull final SocketResponsePacket responsePacket) {
-        if (Looper.myLooper() != Looper.getMainLooper()) {
-            getUiHandler().post(new Runnable() {
-                @Override
-                public void run() {
-                    self.__i__onReceiveResponse(responsePacket);
-                }
-            });
-            return;
-        }
-
-        setLastReceiveMessageTime(System.currentTimeMillis());
-
-        if (getSocketClientDelegates().size() > 0) {
-            ArrayList<SocketClientDelegate> delegatesCopy =
-                    (ArrayList<SocketClientDelegate>) getSocketClientDelegates().clone();
-            int count = delegatesCopy.size();
-            for (int i = 0; i < count; ++i) {
-                delegatesCopy.get(i).onResponse(this, responsePacket);
-            }
-        }
-    }
-
+    /**
+     * 开始发送数据时调用此方法
+     *
+     * @param packet
+     */
     private void __i__onSendPacketBegin(final SocketPacket packet) {
         if (Looper.myLooper() != Looper.getMainLooper()) {
             getUiHandler().post(new Runnable() {
@@ -798,17 +741,16 @@ public class SocketClient {
             });
             return;
         }
-
-        if (getSocketClientDelegates().size() > 0) {
-            ArrayList<SocketClientSendingDelegate> delegatesCopy =
-                    (ArrayList<SocketClientSendingDelegate>) getSocketClientSendingDelegates().clone();
-            int count = delegatesCopy.size();
-            for (int i = 0; i < count; ++i) {
-                delegatesCopy.get(i).onSendPacketBegin(this, packet);
-            }
+        //触发发包开始的回调-这绝对是在主线程
+        if (packageSendCallback != null) {
+            packageSendCallback.onSendPacketBegin(this, packet);
         }
     }
 
+    /**
+     * 发送数据结束调用此方法
+     * @param packet
+     */
     private void __i__onSendPacketEnd(final SocketPacket packet) {
         if (Looper.myLooper() != Looper.getMainLooper()) {
             getUiHandler().post(new Runnable() {
@@ -819,17 +761,16 @@ public class SocketClient {
             });
             return;
         }
-
-        if (getSocketClientDelegates().size() > 0) {
-            ArrayList<SocketClientSendingDelegate> delegatesCopy =
-                    (ArrayList<SocketClientSendingDelegate>) getSocketClientSendingDelegates().clone();
-            int count = delegatesCopy.size();
-            for (int i = 0; i < count; ++i) {
-                delegatesCopy.get(i).onSendPacketEnd(this, packet);
-            }
+        //触发发送结束的回调-这绝对是在主线程
+        if (packageSendCallback != null) {
+            packageSendCallback.onSendPacketEnd(this, packet);
         }
     }
 
+    /**
+     * 取消发送调用此方法
+     * @param packet
+     */
     private void __i__onSendPacketCancel(final SocketPacket packet) {
         if (Looper.myLooper() != Looper.getMainLooper()) {
             getUiHandler().post(new Runnable() {
@@ -840,17 +781,21 @@ public class SocketClient {
             });
             return;
         }
-
-        if (getSocketClientDelegates().size() > 0) {
-            ArrayList<SocketClientSendingDelegate> delegatesCopy =
-                    (ArrayList<SocketClientSendingDelegate>) getSocketClientSendingDelegates().clone();
-            int count = delegatesCopy.size();
-            for (int i = 0; i < count; ++i) {
-                delegatesCopy.get(i).onSendPacketCancel(this, packet);
-            }
+        //触发发送取消的回调-这绝对是在主线程
+        if (packageSendCallback != null) {
+            packageSendCallback.onSendPacketCancel(this, packet);
         }
     }
 
+    /**
+     * 发送进度
+     * @param packet
+     * @param sendedLength
+     * @param headerLength
+     * @param packetLengthDataLength
+     * @param dataLength
+     * @param trailerLength
+     */
     private void __i__onSendingPacketInProgress(final SocketPacket packet, final int sendedLength, final int headerLength, final int packetLengthDataLength, final int dataLength, final int trailerLength) {
         if (Looper.myLooper() != Looper.getMainLooper()) {
             getUiHandler().post(new Runnable() {
@@ -861,19 +806,18 @@ public class SocketClient {
             });
             return;
         }
-
         float progress = sendedLength / (float) (headerLength + packetLengthDataLength + dataLength + trailerLength);
-
-        if (getSocketClientDelegates().size() > 0) {
-            ArrayList<SocketClientSendingDelegate> delegatesCopy =
-                    (ArrayList<SocketClientSendingDelegate>) getSocketClientSendingDelegates().clone();
-            int count = delegatesCopy.size();
-            for (int i = 0; i < count; ++i) {
-                delegatesCopy.get(i).onSendingPacketInProgress(this, packet, progress, sendedLength);
-            }
+        //触发发送进度的回调-这绝对是在主线程
+        if (packageSendCallback != null) {
+            packageSendCallback.onSendingPacketInProgress(this, packet, progress, sendedLength);
         }
+
     }
 
+    /**
+     * 开始接收时调用此方法
+     * @param packet
+     */
     private void __i__onReceivePacketBegin(final SocketResponsePacket packet) {
         if (Looper.myLooper() != Looper.getMainLooper()) {
             getUiHandler().post(new Runnable() {
@@ -884,17 +828,16 @@ public class SocketClient {
             });
             return;
         }
-
-        if (getSocketClientReceivingDelegates().size() > 0) {
-            ArrayList<SocketClientReceivingDelegate> delegatesCopy =
-                    (ArrayList<SocketClientReceivingDelegate>) getSocketClientReceivingDelegates().clone();
-            int count = delegatesCopy.size();
-            for (int i = 0; i < count; ++i) {
-                delegatesCopy.get(i).onReceivePacketBegin(this, packet);
-            }
+        //触发接收包的开始回调-这绝对是在主线程
+        if (packageRecieveCallback != null) {
+            packageRecieveCallback.onReceivePacketBegin(this, packet);
         }
     }
 
+    /**
+     * 接收数据完成时调用此方法
+     * @param packet
+     */
     private void __i__onReceivePacketEnd(final SocketResponsePacket packet) {
         if (Looper.myLooper() != Looper.getMainLooper()) {
             getUiHandler().post(new Runnable() {
@@ -905,17 +848,17 @@ public class SocketClient {
             });
             return;
         }
-
-        if (getSocketClientReceivingDelegates().size() > 0) {
-            ArrayList<SocketClientReceivingDelegate> delegatesCopy =
-                    (ArrayList<SocketClientReceivingDelegate>) getSocketClientReceivingDelegates().clone();
-            int count = delegatesCopy.size();
-            for (int i = 0; i < count; ++i) {
-                delegatesCopy.get(i).onReceivePacketEnd(this, packet);
-            }
+        //触发接收包的结束回调-这绝对是在主线程
+        if (packageRecieveCallback != null) {
+            packageRecieveCallback.onReceivePacketEnd(this, packet);
         }
+
     }
 
+    /**
+     * 取消接收时调用此方法
+     * @param packet
+     */
     private void __i__onReceivePacketCancel(final SocketResponsePacket packet) {
         if (Looper.myLooper() != Looper.getMainLooper()) {
             getUiHandler().post(new Runnable() {
@@ -926,19 +869,22 @@ public class SocketClient {
             });
             return;
         }
-
-        if (getSocketClientReceivingDelegates().size() > 0) {
-            ArrayList<SocketClientReceivingDelegate> delegatesCopy =
-                    (ArrayList<SocketClientReceivingDelegate>) getSocketClientReceivingDelegates().clone();
-            int count = delegatesCopy.size();
-            for (int i = 0; i < count; ++i) {
-                delegatesCopy.get(i).onReceivePacketCancel(this, packet);
-            }
+        //触发接收包取消回调-这绝对是在主线程
+        if (packageRecieveCallback != null) {
+            packageRecieveCallback.onReceivePacketCancel(this, packet);
         }
     }
 
+    /**
+     * 接收进度
+     * @param packet
+     * @param receivedLength
+     * @param headerLength
+     * @param packetLengthDataLength
+     * @param dataLength
+     * @param trailerLength
+     */
     private void __i__onReceivingPacketInProgress(final SocketResponsePacket packet, final int receivedLength, final int headerLength, final int packetLengthDataLength, final int dataLength, final int trailerLength) {
-
         long currentTime = System.currentTimeMillis();
         if (currentTime - getLastReceiveProgressCallbackTime() < (1000 / 24)) {
             return;
@@ -953,18 +899,11 @@ public class SocketClient {
             });
             return;
         }
-
         float progress = receivedLength / (float) (headerLength + packetLengthDataLength + dataLength + trailerLength);
-
-        if (getSocketClientReceivingDelegates().size() > 0) {
-            ArrayList<SocketClientReceivingDelegate> delegatesCopy =
-                    (ArrayList<SocketClientReceivingDelegate>) getSocketClientReceivingDelegates().clone();
-            int count = delegatesCopy.size();
-            for (int i = 0; i < count; ++i) {
-                delegatesCopy.get(i).onReceivingPacketInProgress(this, packet, progress, receivedLength);
-            }
+        //触发接收包进度回调-这绝对是在主线程
+        if (packageRecieveCallback != null) {
+            packageRecieveCallback.onReceivingPacketInProgress(this, packet, progress, receivedLength);
         }
-
         setLastReceiveProgressCallbackTime(System.currentTimeMillis());
     }
 
@@ -983,7 +922,7 @@ public class SocketClient {
         }
 
         if (getSocketPacketHelper().isReceiveTimeoutEnabled()) {
-            if (currentTime - getLastReceiveMessageTime() >=getSocketPacketHelper().getReceiveTimeout()) {
+            if (currentTime - getLastReceiveMessageTime() >= getSocketPacketHelper().getReceiveTimeout()) {
                 disconnect();
             }
         }
@@ -996,36 +935,41 @@ public class SocketClient {
         }
     }
 
-    /* Enums */
 
-    /* Inner Classes */
+    /**
+     * Socket连接线程
+     */
     private class ConnectionThread extends Thread {
         @Override
         public void run() {
             super.run();
 
             try {
-                SocketClientAddress address = self.getAddress();
-
                 if (Thread.interrupted()) {
                     return;
                 }
+                //获取地址参数
+                SocketClientAddress address = self.getAddress();
 
+                //实例化Sokcet对象，并连接
                 self.getRunningSocket().connect(address.getInetSocketAddress(), address.getConnectionTimeout());
 
                 if (Thread.interrupted()) {
                     return;
                 }
-
-                self.setState(SocketClient.State.Connected);
-
+                //改变连接状态为连接成功
+                self.setState(ConnectState.Connected);
+                //上次发送心跳包的时间
                 self.setLastSendHeartBeatMessageTime(System.currentTimeMillis());
+                //上次接收消息的时间
                 self.setLastReceiveMessageTime(System.currentTimeMillis());
+                //上次发送消息的时间
                 self.setLastSendMessageTime(NoSendingTime);
-
+                //发送内容
                 self.setSendingPacket(null);
+                //接收内容
                 self.setReceivingResponsePacket(null);
-
+                //线程启动成功，将线程对象清空
                 self.setConnectionThread(null);
 
                 self.__i__onConnected();
@@ -1074,7 +1018,7 @@ public class SocketClient {
             }
 
             self.setDisconnecting(false);
-            self.setState(SocketClient.State.Disconnected);
+            self.setState(ConnectState.Disconnect);
             self.setSocketInputReader(null);
 
             if (self.hearBeatCountDownTimer != null) {
@@ -1256,7 +1200,6 @@ public class SocketClient {
                     packet.setData(data);
                     //结束回调的触发
                     self.__i__onReceivePacketEnd(packet);
-                    self.__i__onReceiveResponse(packet);
 
 //                    self.setReceivingResponsePacket(null);
                 }

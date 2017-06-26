@@ -2,25 +2,18 @@ package scut.carson_ho.socket_carson.controller;
 
 import android.os.AsyncTask;
 import android.os.Handler;
-import android.os.Message;
-import android.support.annotation.NonNull;
 import android.util.Log;
 
 import com.vilyever.socketclient.SocketClient;
-import com.vilyever.socketclient.helper.SocketClientDelegate;
-import com.vilyever.socketclient.helper.SocketClientReceivingDelegate;
-import com.vilyever.socketclient.helper.SocketClientSendingDelegate;
+import com.vilyever.socketclient.helper.SocketStateChangeCallback;
+import com.vilyever.socketclient.helper.PackageReciveCallback;
+import com.vilyever.socketclient.helper.PackageSendCallback;
 import com.vilyever.socketclient.helper.SocketHeartBeatHelper;
 import com.vilyever.socketclient.helper.SocketPacket;
 import com.vilyever.socketclient.helper.SocketPacketHelper;
 import com.vilyever.socketclient.helper.SocketResponsePacket;
 import com.vilyever.socketclient.util.CharsetUtil;
 
-import java.io.BufferedReader;
-import java.io.DataInputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
 import java.util.Arrays;
 
 import scut.carson_ho.socket_carson.KLSocketBean;
@@ -100,8 +93,8 @@ public class KLVilyeverController {
         setModelDefaultSend();
         setModelDefaultReceive();
 
-
-        this.localSocketClient.registerSocketClientDelegate(new SocketClientDelegate() {
+        //注册连接状态改变监听
+        this.localSocketClient.registerSocketStateChangeCallback(new SocketStateChangeCallback() {
             /**
              * 连接上远程端时的回调
              */
@@ -117,7 +110,7 @@ public class KLVilyeverController {
              */
             @Override
             public void onDisconnected(final SocketClient client) {
-                if (client.getState() == SocketClient.State.Disconnected) {
+                if (client.getState() == SocketClient.ConnectState.Disconnect) {
                     Log.i("mengyuansocket", "手动断开了连接");
                     return;
                 }
@@ -143,35 +136,12 @@ public class KLVilyeverController {
                     }
                 }.execute();
             }
-
-            /**
-             * 接收到数据包时的回调
-             */
-            @Override
-            public void onResponse(final SocketClient client, @NonNull SocketResponsePacket responsePacket) {
-                Log.i("mengyuansocket", "onResponse: " + responsePacket.hashCode() + " 【" + responsePacket.getMessage() + "】 " + " isHeartBeat: " + responsePacket.isHeartBeat() + " " + Arrays.toString(responsePacket.getData()));
-                if (responsePacket.getData() == null) {
-                    return;
-                }
-                KLSocketBean bean = KLSocketBean.toSocketBean(responsePacket.getData());
-                if (bean == null) {
-                    return;
-                }
-                switch (bean.operationType) {
-                    case OperationType.TYPE_LOGIN_SERVER://登录成功
-                        Log.i("mengyuansocket", "登录成功");
-                        localSocketClient.getHeartBeatHelper().setSendHeartBeatEnabled(true); // 设置允许自动发送心跳包，此值默认为false
-//                            localSocketClient.getSocketConfigure().getHeartBeatHelper().setSendHeartBeatEnabled(isLogin = true); // 设置允许自动发送心跳包，此值默认为false
-                        break;
-                    case OperationType.TYPE_HEART_SERVER://心跳成功
-                        Log.i("mengyuansocket", "心跳成功");
-                        break;
-                }
-
-            }
-
         });
-        this.localSocketClient.registerSocketClientSendingDelegate(new SocketClientSendingDelegate() {
+
+        /**
+         * 注册数据发送监听
+         */
+        this.localSocketClient.registerPackageSendCallback(new PackageSendCallback() {
             /**
              * 数据包开始发送时的回调
              */
@@ -210,15 +180,36 @@ public class KLVilyeverController {
                 Log.i("mengyuansocket", "数据包完成发送时的回调: " + packet.hashCode());
             }
         });
-        this.localSocketClient.registerSocketClientReceiveDelegate(new SocketClientReceivingDelegate() {
+
+        /**
+         * 注册数据接收的监听
+         */
+        this.localSocketClient.registerPackageReceiveCallback(new PackageReciveCallback() {
             @Override
             public void onReceivePacketBegin(SocketClient client, SocketResponsePacket packet) {
                 Log.i("mengyuansocket", "接收数据包开始: " + packet.hashCode());
             }
 
             @Override
-            public void onReceivePacketEnd(SocketClient client, SocketResponsePacket packet) {
-                Log.i("mengyuansocket", "接收数据包完成: " + packet.hashCode());
+            public void onReceivePacketEnd(SocketClient client, SocketResponsePacket responsePacket) {
+                Log.i("mengyuansocket", "onResponse: " + responsePacket.hashCode() + " 【" + responsePacket.getMessage() + "】 " + " isHeartBeat: " + responsePacket.isHeartBeat() + " " + Arrays.toString(responsePacket.getData()));
+                if (responsePacket.getData() == null) {
+                    return;
+                }
+                KLSocketBean bean = KLSocketBean.toSocketBean(responsePacket.getData());
+                if (bean == null) {
+                    return;
+                }
+                switch (bean.operationType) {
+                    case OperationType.TYPE_LOGIN_SERVER://登录成功
+                        Log.i("mengyuansocket", "登录成功");
+                        localSocketClient.getHeartBeatHelper().setSendHeartBeatEnabled(true); // 设置允许自动发送心跳包，此值默认为false
+//                            localSocketClient.getSocketConfigure().getHeartBeatHelper().setSendHeartBeatEnabled(isLogin = true); // 设置允许自动发送心跳包，此值默认为false
+                        break;
+                    case OperationType.TYPE_HEART_SERVER://心跳成功
+                        Log.i("mengyuansocket", "心跳成功");
+                        break;
+                }
             }
 
             @Override
@@ -354,7 +345,7 @@ public class KLVilyeverController {
     private void setModelDefaultSend() {
         /**
          * 设置分段发送数据长度
-         * 即在发送指定长度后通过 {@link SocketClientSendingDelegate#onSendingPacketInProgress(SocketClient, SocketPacket, float, int)}回调当前发送进度
+         * 即在发送指定长度后通过 {@link PackageSendCallback#onSendingPacketInProgress(SocketClient, SocketPacket, float, int)}回调当前发送进度
          * 注意：回调过于频繁可能导致设置UI过于频繁从而导致主线程卡顿
          *
          * 若无需进度回调可删除此二行，删除后仍有【发送开始】【发送结束】的回调

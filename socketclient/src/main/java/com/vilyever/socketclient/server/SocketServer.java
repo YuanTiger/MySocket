@@ -8,7 +8,7 @@ import android.support.annotation.WorkerThread;
 
 import com.vilyever.socketclient.SocketClient;
 import com.vilyever.socketclient.helper.SocketClientAddress;
-import com.vilyever.socketclient.helper.SocketClientDelegate;
+import com.vilyever.socketclient.helper.SocketStateChangeCallback;
 import com.vilyever.socketclient.helper.SocketConfigure;
 import com.vilyever.socketclient.helper.SocketHeartBeatHelper;
 import com.vilyever.socketclient.helper.SocketPacketHelper;
@@ -28,7 +28,7 @@ import java.util.ArrayList;
  * Created by vilyever on 2016/3/18.
  * Feature:
  */
-public class SocketServer implements SocketClientDelegate {
+public class SocketServer implements SocketStateChangeCallback {
     final SocketServer self = this;
 
     public static final int NoPort = -1;
@@ -268,11 +268,6 @@ public class SocketServer implements SocketClientDelegate {
         __i__onSocketServerClientDisconnected((SocketServerClient) client);
     }
 
-    @Override
-    public void onResponse(SocketClient client, @NonNull SocketResponsePacket responsePacket) {
-
-    }
-
 
     /* Protected Methods */
     @WorkerThread
@@ -405,7 +400,7 @@ public class SocketServer implements SocketClientDelegate {
 
                     SocketServerClient socketServerClient = self.internalGetSocketServerClient(socket);
                     getRunningSocketServerClients().add(socketServerClient);
-                    socketServerClient.registerSocketClientDelegate(self);
+                    socketServerClient.registerSocketStateChangeCallback(self);
                     self.__i__onSocketServerClientConnected(socketServerClient);
                 }
                 catch (IOException e) {
