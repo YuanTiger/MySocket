@@ -11,6 +11,5 @@ public interface PackageReciveCallback {
     void onReceivePacketBegin(SocketClient client, SocketResponsePacket responsePacket);
     void onReceivePacketEnd(SocketClient client, SocketResponsePacket responsePacket);
     void onReceivePacketCancel(SocketClient client, SocketResponsePacket responsePacket);
-    void onReceivingPacketInProgress(SocketClient client, SocketResponsePacket packet, float progress, int receivedLength);
 
 }

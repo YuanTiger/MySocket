@@ -26,19 +26,6 @@ public class SocketPacket {
         this.data = Arrays.copyOf(data, data.length);
         this.heartBeat = isHeartBeat;
     }
-
-    public SocketPacket(String message) {
-        this.ID = IDAtomic.getAndIncrement();
-        this.message = message;
-    }
-
-    /* Public Methods */
-    public void buildDataWithCharsetName(String charsetName) {
-        if (getMessage() != null) {
-            this.data = CharsetUtil.stringToData(getMessage(), charsetName);
-        }
-    }
-
     /* Properties */
     /**
      * ID, unique
@@ -54,14 +41,6 @@ public class SocketPacket {
     private byte[] data;
     public byte[] getData() {
         return this.data;
-    }
-
-    /**
-     * string data
-     */
-    private String message;
-    public String getMessage() {
-        return this.message;
     }
 
     private boolean heartBeat;

@@ -10,6 +10,10 @@ import com.vilyever.socketclient.SocketClient;
  * Feature: Socket状态监听
  */
 public interface SocketStateChangeCallback {
+    //连接成功
     void onConnected(SocketClient client);
+    //连接断开
+    void onDisconnect(SocketClient client);
+    //连接手动断开
     void onDisconnected(SocketClient client);
 }

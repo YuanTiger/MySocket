@@ -27,7 +27,6 @@ public class SocketPacketHelper {
         helper.setSendTimeout(getSendTimeout());
         helper.setSendTimeoutEnabled(isSendTimeoutEnabled());
 
-        helper.setReadStrategy(getReadStrategy());
 
         helper.setReceiveHeaderData(getReceiveHeaderData());
         helper.setReceivePacketLengthDataLength(getReceivePacketLengthDataLength());
@@ -41,45 +40,7 @@ public class SocketPacketHelper {
         return helper;
     }
 
-    /* Public Methods */
-    public void checkValidation() {
-        switch (getReadStrategy()) {
-            case Manually:
-                return;
-            case AutoReadToTrailer:
-                if (getReceiveTrailerData() == null
-                        || getReceiveTrailerData().length <= 0) {
-                    throw new IllegalArgumentException("we need ReceiveTrailerData for AutoReadToTrailer");
-                }
-                return;
-            case AutoReadByLength:
-                if (getReceivePacketLengthDataLength() <= 0
-                        || getReceivePacketDataLengthConvertor() == null) {
-                    throw new IllegalArgumentException("we need ReceivePacketLengthDataLength and ReceivePacketDataLengthConvertor for AutoReadByLength");
-                }
-                return;
-        }
 
-        throw new IllegalArgumentException("we need a correct ReadStrategy");
-    }
-
-    public byte[] getSendPacketLengthData(int packetLength) {
-        if (getSendPacketLengthDataConvertor() != null) {
-            return getSendPacketLengthDataConvertor().obtainSendPacketLengthDataForPacketLength(getOriginal(), packetLength);
-        }
-
-        return null;
-    }
-
-    public int getReceivePacketDataLength(byte[] packetLengthData) {
-        if (getReadStrategy() == ReadStrategy.AutoReadByLength) {
-            if (getReceivePacketDataLengthConvertor() != null) {
-                return getReceivePacketDataLengthConvertor().obtainReceivePacketDataLength(getOriginal(), packetLengthData);
-            }
-        }
-
-        return 0;
-    }
 
     /* Properties */
     private SocketPacketHelper original;
@@ -191,35 +152,6 @@ public class SocketPacketHelper {
     public boolean isSendTimeoutEnabled() {
         return this.sendTimeoutEnabled;
     }
-
-    private ReadStrategy readStrategy = ReadStrategy.Manually;
-    public SocketPacketHelper setReadStrategy(ReadStrategy readStrategy) {
-        this.readStrategy = readStrategy;
-        return this;
-    }
-    public ReadStrategy getReadStrategy() {
-        return this.readStrategy;
-    }
-    public enum ReadStrategy {
-        /**
-         * 手动读取
-         * 手动调用{@link com.vilyever.socketclient.SocketClient#readDataToData(byte[])}或{@link com.vilyever.socketclient.SocketClient#readDataToLength(int)}读取
-         */
-        Manually,
-        /**
-         * 自动读取到包尾
-         * 需设置包尾相关信息
-         * 自动读取信息直到读取到与包尾相同的数据后，回调接收包
-         */
-        AutoReadToTrailer,
-        /**
-         * 自动按长度读取
-         * 需设置长度相关信息
-         * 自动读取包长度信息，转换成包长度后读取该长度字节后，回调接收包
-         */
-        AutoReadByLength,
-    }
-
     /**
      * 接收消息时每一条消息的头部信息
      * 若不为null，每一条接收消息都必须带有此头部信息，否则将无法读取

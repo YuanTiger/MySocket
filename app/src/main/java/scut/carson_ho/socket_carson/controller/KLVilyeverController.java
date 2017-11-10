@@ -81,24 +81,15 @@ public class KLVilyeverController {
         setSocketAddress(ip, port + "");
         //设置编码格式
         localSocketClient.setCharsetName(CharsetUtil.UTF_8); // 设置编码为UTF-8
-        //设置包头
-//        localSocketClient.getSocketPacketHelper().setReceivePacketLengthDataLength(KLSocketBean.HEADER_LEN);
-
-        //设置固定的心跳包内容
-//        setDefaultHeartContent();
         //设置动态的心跳包内容
         setAutoHeartContent();
-
-
         //在发送每个数据包时，发送每段数据的最长时间，超过后自动断开socket连接
         localSocketClient.getSocketPacketHelper().setSendTimeout(SocketConfig.HEART_SEND_TIME);
         // 设置允许使用发送超时时长，此值默认为false
         localSocketClient.getSocketPacketHelper().setSendTimeoutEnabled(true);
-        localSocketClient.getSocketPacketHelper().setReadStrategy(SocketPacketHelper.ReadStrategy.Manually);
-
 
         //注册连接状态改变监听
-        this.localSocketClient.registerSocketStateChangeCallback(new SocketStateChangeCallback() {
+        localSocketClient.registerSocketStateChangeCallback(new SocketStateChangeCallback() {
             /**
              * 连接上远程端时的回调
              */
@@ -113,11 +104,8 @@ public class KLVilyeverController {
              * 与远程端断开连接时的回调
              */
             @Override
-            public void onDisconnected(final SocketClient client) {
-                if (client.getState() == SocketClient.ConnectState.Disconnect) {
-                    Log.i("mengyuansocket", "手动断开了连接");
-                    return;
-                }
+            public void onDisconnect(final SocketClient client) {
+
                 Log.i("mengyuansocket", "与服务器断开了连接，3秒后重新连接");
                 new AsyncTask<Void, Void, Void>() {
                     @Override
@@ -140,12 +128,17 @@ public class KLVilyeverController {
                     }
                 }.execute();
             }
+
+            @Override
+            public void onDisconnected(SocketClient client) {
+                Log.i("mengyuansocket", "手动断开了连接");
+            }
         });
 
         /**
          * 注册数据发送监听
          */
-        this.localSocketClient.registerPackageSendCallback(new PackageSendCallback() {
+        localSocketClient.registerPackageSendCallback(new PackageSendCallback() {
             /**
              * 数据包开始发送时的回调
              */
@@ -165,16 +158,6 @@ public class KLVilyeverController {
                 Log.i("mengyuansocket", "数据包取消发送时的回调: " + packet.hashCode());
             }
 
-            /**
-             * 数据包发送的进度回调
-             * progress值为[0.0f, 1.0f]
-             * 通常配合分段发送使用
-             * 可用于显示文件等大数据的发送进度
-             */
-            @Override
-            public void onSendingPacketInProgress(SocketClient client, SocketPacket packet, float progress, int sendedLength) {
-                Log.i("mengyuansocket", "数据包发送的进度回调: " + packet.hashCode() + " : " + progress + " : " + sendedLength);
-            }
 
             /**
              * 数据包完成发送时的回调
@@ -188,7 +171,7 @@ public class KLVilyeverController {
         /**
          * 注册数据接收的监听
          */
-        this.localSocketClient.registerPackageReceiveCallback(new PackageReciveCallback() {
+        localSocketClient.registerPackageReceiveCallback(new PackageReciveCallback() {
             @Override
             public void onReceivePacketBegin(SocketClient client, SocketResponsePacket packet) {
                 Log.i("mengyuansocket", "接收数据包开始: " + packet.hashCode());
@@ -221,10 +204,7 @@ public class KLVilyeverController {
                 Log.i("mengyuansocket", "接收数据包已取消: " + packet.hashCode());
             }
 
-            @Override
-            public void onReceivingPacketInProgress(SocketClient client, SocketResponsePacket packet, float progress, int receivedLength) {
-                Log.i("mengyuansocket", "接收数据包进度: " + packet.hashCode() + " : " + progress + " : " + receivedLength);
-            }
+
         });
 
 
@@ -237,8 +217,8 @@ public class KLVilyeverController {
             return;
         }
         //发送登录请求
-        SocketPacket packet = new SocketPacket(KLSocketBean.createAppLoginPackage("zhongjin", "test", ++loginTag));
-        localSocketClient.sendPacket(packet);
+        localSocketClient.sendData(KLSocketBean.createAppLoginPackage("zhongjin", "test", ++loginTag));
+
     }
 
     public void stop() {
@@ -254,8 +234,7 @@ public class KLVilyeverController {
             return;
         }
         //发送心跳包请求
-        SocketPacket packet = new SocketPacket(KLSocketBean.createAppHeartPackage(++heartTag));
-        localSocketClient.sendPacket(packet);
+        localSocketClient.sendData(KLSocketBean.createAppHeartPackage(++heartTag));
     }
 
     /**
@@ -267,24 +246,6 @@ public class KLVilyeverController {
         localSocketClient.getAddress().setConnectionTimeout(SocketConfig.CONNECTION_TIME); // 连接超时时长，单位毫秒
     }
 
-
-    /**
-     * 设置固定的心跳包内容
-     */
-    private void setDefaultHeartContent() {
-        /**
-         * 设置自动发送的心跳包信息
-         */
-        localSocketClient.getHeartBeatHelper().setDefaultSendData(KLSocketBean.createAppHeartPackage(heartTag++));
-
-        /**
-         * 设置远程端发送到本地的心跳包信息内容，用于判断接收到的数据包是否是心跳包
-         * 通过{@link SocketResponsePacket#isHeartBeat()} 查看数据包是否是心跳包
-         */
-//        localSocketClient.getHeartBeatHelper().setDefaultReceiveData(KLSocketBean.createServerHeartPackage(heartTag));
-        localSocketClient.getHeartBeatHelper().setHeartBeatInterval(SocketConfig.HEART_SEND_TIME); // 设置自动发送心跳包的间隔时长，单位毫秒
-//        localSocketClient.getHeartBeatHelper().setSendHeartBeatEnabled(true); // 设置允许自动发送心跳包，此值默认为false
-    }
 
 
     /**

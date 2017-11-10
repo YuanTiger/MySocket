@@ -59,8 +59,6 @@ public class SocketClient {
         }
         //检查地址是否合理，利用正则
         getAddress().checkValidation();
-        //检查包内容的合理性
-        getSocketPacketHelper().checkValidation();
         //改变状态为：连接中
         setState(ConnectState.Connecting);
         //启动连接线程
@@ -106,22 +104,7 @@ public class SocketClient {
         return packet;
     }
 
-    /**
-     * 发送字符串，将以{@link #charsetName}编码为byte数组
-     *
-     * @param message
-     * @return 打包后的数据包
-     */
-    public SocketPacket sendString(String message) {
-        if (!isConnected()) {
-            return null;
-        }
-        SocketPacket packet = new SocketPacket(message);
-        sendPacket(packet);
-        return packet;
-    }
-
-    public SocketPacket sendPacket(final SocketPacket packet) {
+    private SocketPacket sendPacket(final SocketPacket packet) {
         if (!isConnected()) {
             return null;
         }
@@ -153,105 +136,6 @@ public class SocketClient {
                 }
             }
         }).start();
-    }
-
-
-    public SocketResponsePacket loopReadData() {
-        if (!isConnected()) {
-            return null;
-        }
-
-        if (getSocketPacketHelper().getReadStrategy() != SocketPacketHelper.ReadStrategy.Manually) {
-            return null;
-        }
-
-        setReceivingResponsePacket(new SocketResponsePacket());
-
-        new Thread(new Runnable() {
-            @Override
-            public void run() {
-                for (; ; ) {
-                    if (!self.isConnected()) {
-                        return;
-                    }
-                    self.__i__onReceivePacketBegin(self.getReceivingResponsePacket());
-                    try {
-                        //读取数据
-                        byte[] data = self.getSocketInputReader().readData();
-                        if (data == null) {
-                            Thread.sleep(3 * 1000);
-                        }
-                        //设置回调
-                        self.getReceivingResponsePacket().setData(data);
-                        if (getCharsetName() != null) {
-                            self.getReceivingResponsePacket().buildStringWithCharsetName(getCharsetName());
-                        }
-                        self.__i__onReceivePacketEnd(self.getReceivingResponsePacket());
-                    } catch (IOException e) {
-                        e.printStackTrace();
-
-                        if (self.getReceivingResponsePacket() != null) {
-                            self.__i__onReceivePacketCancel(self.getReceivingResponsePacket());
-                            self.setReceivingResponsePacket(null);
-                        }
-                    } catch (InterruptedException e) {
-                        e.printStackTrace();
-                    }
-                }
-            }
-        }).start();
-        return getReceivingResponsePacket();
-    }
-
-    public SocketResponsePacket readDataToData(final byte[] data) {
-        return readDataToData(data, true);
-    }
-
-    /**
-     * 读取到与指定字节相同的字节序列后回调数据包
-     *
-     * @param data        指定字节序列
-     * @param includeData 是否在回调的数据包中包含指定的字节序列
-     * @return 将要读取的数据包实例
-     */
-    public SocketResponsePacket readDataToData(final byte[] data, final boolean includeData) {
-        if (!isConnected()) {
-            return null;
-        }
-
-        if (getSocketPacketHelper().getReadStrategy() != SocketPacketHelper.ReadStrategy.Manually) {
-            return null;
-        }
-
-        if (getReceivingResponsePacket() != null) {
-            return null;
-        }
-
-        setReceivingResponsePacket(new SocketResponsePacket());
-
-        new Thread(new Runnable() {
-            @Override
-            public void run() {
-                self.__i__onReceivePacketBegin(self.getReceivingResponsePacket());
-                try {
-                    byte[] result = self.getSocketInputReader().readToData(data, includeData);
-                    self.getReceivingResponsePacket().setData(result);
-                    if (getCharsetName() != null) {
-                        self.getReceivingResponsePacket().buildStringWithCharsetName(getCharsetName());
-                    }
-                    self.__i__onReceivePacketEnd(self.getReceivingResponsePacket());
-                } catch (IOException e) {
-                    e.printStackTrace();
-
-                    if (self.getReceivingResponsePacket() != null) {
-                        self.__i__onReceivePacketCancel(self.getReceivingResponsePacket());
-                        self.setReceivingResponsePacket(null);
-                    }
-                }
-            }
-        }).start();
-
-        return getReceivingResponsePacket();
     }
 
     //Socket状态监听
@@ -509,6 +393,7 @@ public class SocketClient {
         return this.lastSendMessageTime;
     }
 
+    //本次发送的包内容
     private SocketPacket sendingPacket;
 
     protected SocketClient setSendingPacket(SocketPacket sendingPacket) {
@@ -644,7 +529,11 @@ public class SocketClient {
         __i__onConnected();
     }
 
-    /* Private Methods */
+    /**
+     * 向发送队列中插入新的消息
+     *
+     * @param packet
+     */
     private void __i__enqueueNewPacket(final SocketPacket packet) {
         if (!isConnected()) {
             return;
@@ -722,7 +611,7 @@ public class SocketClient {
         }
         //触发断开连接的回调-这绝对是在主线程
         if (socketClientDelegate != null) {
-            socketClientDelegate.onDisconnected(this);
+            socketClientDelegate.onDisconnect(this);
         }
     }
 
@@ -749,6 +638,7 @@ public class SocketClient {
 
     /**
      * 发送数据结束调用此方法
+     *
      * @param packet
      */
     private void __i__onSendPacketEnd(final SocketPacket packet) {
@@ -769,6 +659,7 @@ public class SocketClient {
 
     /**
      * 取消发送调用此方法
+     *
      * @param packet
      */
     private void __i__onSendPacketCancel(final SocketPacket packet) {
@@ -787,35 +678,10 @@ public class SocketClient {
         }
     }
 
-    /**
-     * 发送进度
-     * @param packet
-     * @param sendedLength
-     * @param headerLength
-     * @param packetLengthDataLength
-     * @param dataLength
-     * @param trailerLength
-     */
-    private void __i__onSendingPacketInProgress(final SocketPacket packet, final int sendedLength, final int headerLength, final int packetLengthDataLength, final int dataLength, final int trailerLength) {
-        if (Looper.myLooper() != Looper.getMainLooper()) {
-            getUiHandler().post(new Runnable() {
-                @Override
-                public void run() {
-                    self.__i__onSendingPacketInProgress(packet, sendedLength, headerLength, packetLengthDataLength, dataLength, trailerLength);
-                }
-            });
-            return;
-        }
-        float progress = sendedLength / (float) (headerLength + packetLengthDataLength + dataLength + trailerLength);
-        //触发发送进度的回调-这绝对是在主线程
-        if (packageSendCallback != null) {
-            packageSendCallback.onSendingPacketInProgress(this, packet, progress, sendedLength);
-        }
-
-    }
 
     /**
      * 开始接收时调用此方法
+     *
      * @param packet
      */
     private void __i__onReceivePacketBegin(final SocketResponsePacket packet) {
@@ -836,6 +702,7 @@ public class SocketClient {
 
     /**
      * 接收数据完成时调用此方法
+     *
      * @param packet
      */
     private void __i__onReceivePacketEnd(final SocketResponsePacket packet) {
@@ -857,6 +724,7 @@ public class SocketClient {
 
     /**
      * 取消接收时调用此方法
+     *
      * @param packet
      */
     private void __i__onReceivePacketCancel(final SocketResponsePacket packet) {
@@ -875,37 +743,6 @@ public class SocketClient {
         }
     }
 
-    /**
-     * 接收进度
-     * @param packet
-     * @param receivedLength
-     * @param headerLength
-     * @param packetLengthDataLength
-     * @param dataLength
-     * @param trailerLength
-     */
-    private void __i__onReceivingPacketInProgress(final SocketResponsePacket packet, final int receivedLength, final int headerLength, final int packetLengthDataLength, final int dataLength, final int trailerLength) {
-        long currentTime = System.currentTimeMillis();
-        if (currentTime - getLastReceiveProgressCallbackTime() < (1000 / 24)) {
-            return;
-        }
-
-        if (Looper.myLooper() != Looper.getMainLooper()) {
-            getUiHandler().post(new Runnable() {
-                @Override
-                public void run() {
-                    self.__i__onReceivingPacketInProgress(packet, receivedLength, headerLength, packetLengthDataLength, dataLength, trailerLength);
-                }
-            });
-            return;
-        }
-        float progress = receivedLength / (float) (headerLength + packetLengthDataLength + dataLength + trailerLength);
-        //触发接收包进度回调-这绝对是在主线程
-        if (packageRecieveCallback != null) {
-            packageRecieveCallback.onReceivingPacketInProgress(this, packet, progress, receivedLength);
-        }
-        setLastReceiveProgressCallbackTime(System.currentTimeMillis());
-    }
 
     private void __i__onTimeTick() {
         if (!isConnected()) {
@@ -1046,6 +883,9 @@ public class SocketClient {
         }
     }
 
+    /**
+     * 包的发送线程
+     */
     private class SendThread extends Thread {
         public SendThread() {
         }
@@ -1062,14 +902,6 @@ public class SocketClient {
                     self.setSendingPacket(packet);
                     self.setLastSendMessageTime(System.currentTimeMillis());
 
-                    if (packet.getData() == null
-                            && packet.getMessage() != null) {
-                        if (self.getCharsetName() == null) {
-                            throw new IllegalArgumentException("we need string charset to send string type message");
-                        } else {
-                            packet.buildDataWithCharsetName(self.getCharsetName());
-                        }
-                    }
 
                     if (packet.getData() == null) {
                         self.__i__onSendPacketCancel(packet);
@@ -1083,23 +915,14 @@ public class SocketClient {
                     byte[] trailerData = self.getSocketPacketHelper().getSendTrailerData();
                     int trailerDataLength = trailerData == null ? 0 : trailerData.length;
 
-                    byte[] packetLengthData = self.getSocketPacketHelper().getSendPacketLengthData(packet.getData().length + trailerDataLength);
-                    int packetLengthDataLength = packetLengthData == null ? 0 : packetLengthData.length;
 
                     int sendedPacketLength = 0;
 
                     packet.setHeaderData(headerData);
                     packet.setTrailerData(trailerData);
-                    packet.setPacketLengthData(packetLengthData);
 
-                    if (headerDataLength + packetLengthDataLength + packet.getData().length + trailerDataLength <= 0) {
-                        self.__i__onSendPacketCancel(packet);
-                        self.setSendingPacket(null);
-                        continue;
-                    }
 
                     self.__i__onSendPacketBegin(packet);
-                    self.__i__onSendingPacketInProgress(packet, sendedPacketLength, headerDataLength, packetLengthDataLength, packet.getData().length, trailerDataLength);
 
                     try {
                         if (headerDataLength > 0) {
@@ -1108,17 +931,8 @@ public class SocketClient {
                             self.setLastSendMessageTime(System.currentTimeMillis());
 
                             sendedPacketLength += headerDataLength;
-                            self.__i__onSendingPacketInProgress(packet, sendedPacketLength, headerDataLength, packetLengthDataLength, packet.getData().length, trailerDataLength);
                         }
 
-                        if (packetLengthDataLength > 0) {
-                            self.getRunningSocket().getOutputStream().write(packetLengthData);
-                            self.getRunningSocket().getOutputStream().flush();
-                            self.setLastSendMessageTime(System.currentTimeMillis());
-
-                            sendedPacketLength += packetLengthDataLength;
-                            self.__i__onSendingPacketInProgress(packet, sendedPacketLength, headerDataLength, packetLengthDataLength, packet.getData().length, trailerDataLength);
-                        }
 
                         if (packet.getData().length > 0) {
                             int segmentLength = self.getRunningSocket().getSendBufferSize();
@@ -1137,8 +951,6 @@ public class SocketClient {
 
                                 sendedPacketLength += end - offset;
 
-                                self.__i__onSendingPacketInProgress(packet, sendedPacketLength, headerDataLength, packetLengthDataLength, packet.getData().length, trailerDataLength);
-
                                 offset = end;
                             }
                         }
@@ -1150,7 +962,6 @@ public class SocketClient {
 
                             sendedPacketLength += trailerDataLength;
 
-                            self.__i__onSendingPacketInProgress(packet, sendedPacketLength, headerDataLength, packetLengthDataLength, packet.getData().length, trailerDataLength);
                         }
 
                         self.__i__onSendPacketEnd(packet);
@@ -1201,7 +1012,6 @@ public class SocketClient {
                     //结束回调的触发
                     self.__i__onReceivePacketEnd(packet);
 
-//                    self.setReceivingResponsePacket(null);
                 }
             } catch (Exception e) {
 //                e.printStackTrace();

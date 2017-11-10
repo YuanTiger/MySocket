@@ -1,5 +1,6 @@
 package scut.carson_ho.socket_carson.activity;
 
+import android.app.Activity;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
@@ -20,7 +21,7 @@ import scut.carson_ho.socket_carson.controller.KLVilyeverController;
  * Desc  :
  */
 
-public class VilyeverActivity extends AppCompatActivity implements View.OnClickListener {
+public class VilyeverActivity extends Activity implements View.OnClickListener {
 
 
     // 连接 断开连接 发送数据到服务器 的按钮变量
